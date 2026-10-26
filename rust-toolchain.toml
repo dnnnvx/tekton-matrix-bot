@@ -1,0 +1,5 @@
+# Keep in sync with the `rust:` image in the Dockerfile.
+[toolchain]
+channel = "1.99"
+components = ["clippy", "rustfmt", "rust-analyzer", "rust-src"]
+profile = "minimal"

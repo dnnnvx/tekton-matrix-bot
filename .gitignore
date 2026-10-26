@@ -1,0 +1,12 @@
+/target
+/data
+
+# *.dot
+.*
+!.gitignore
+!.envrc
+!.dockerignore
+
+# Temporary noted and todos
+/*.md
+!README.md
