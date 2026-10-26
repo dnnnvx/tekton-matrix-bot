@@ -13,8 +13,8 @@ use tracing::info;
 
 use crate::config::Config;
 
-const CIPHER_KEY: &'static [u8; 13] = b"tekton.cipher";
-const SESSION_KEY: &'static [u8; 14] = b"tekton.session";
+const CIPHER_KEY: &[u8; 13] = b"tekton.cipher";
+const SESSION_KEY: &[u8; 14] = b"tekton.session";
 
 /// Restores the saved session, or logs in with the password on first start.
 pub async fn login(config: &Config) -> anyhow::Result<Client> {
