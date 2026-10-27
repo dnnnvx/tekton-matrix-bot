@@ -15,6 +15,7 @@ use anyhow::Context;
 use matrix_sdk::{
     Client,
     authentication::matrix::MatrixSession,
+    config::RequestConfig,
     ruma::{api::client::keys::get_keys, assign},
 };
 use matrix_sdk_store_encryption::StoreCipher;
@@ -56,9 +57,14 @@ pub async fn login(config: &Config) -> anyhow::Result<Client> {
 }
 
 /// Builds the client on the SQLite store, and loads our cipher from it.
+///
+/// Without a retry limit the SDK never retries network failures (timeouts,
+/// refused connections), so one blip fails the request for good, and with it
+/// the one-shot E2EE setup (cross-signing, backups, recovery) after login.
 async fn open(config: &Config) -> anyhow::Result<(Client, StoreCipher)> {
     let client = Client::builder()
         .homeserver_url(&config.homeserver)
+        .request_config(RequestConfig::new().retry_limit(5))
         .sqlite_store(
             config.data_dir.join("store"),
             Some(&config.store_passphrase),

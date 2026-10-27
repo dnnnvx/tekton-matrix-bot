@@ -9,10 +9,11 @@ publish = false
 
 [dependencies]
 anyhow = "1.0.104"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 libsqlite3-sys = { version = "0.38", features = ["bundled"] }
 matrix-sdk = { version = "0.19.1", features = ["e2e-encryption", "markdown", "sqlite"] }
 matrix-sdk-store-encryption = "0.19.1"
-tokio = { version = "1.54.1", features = ["macros", "rt", "signal"] }
+tokio = { version = "1.54.1", features = ["macros", "net", "rt", "signal"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 

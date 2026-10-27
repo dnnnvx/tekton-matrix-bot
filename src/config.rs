@@ -3,7 +3,7 @@
 //! Every variable can also be given as `<NAME>_FILE` pointing at a file holding
 //! the value (Docker/Kubernetes secrets); the file wins over the plain variable.
 
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, net::SocketAddr, path::PathBuf};
 
 use anyhow::Context;
 
@@ -14,6 +14,7 @@ pub struct Config {
     /// Only needed on first start, when there's no saved session yet.
     pub user: Option<String>,
     pub password: Option<String>,
+    pub health_addr: SocketAddr,
 }
 
 impl Config {
@@ -24,6 +25,11 @@ impl Config {
             store_passphrase: var("STORE_PASSPHRASE")?.context("STORE_PASSPHRASE is required")?,
             user: var("MATRIX_USER")?,
             password: var("MATRIX_PASSWORD")?,
+            health_addr: var("HEALTH_ADDR")?
+                .as_deref()
+                .unwrap_or("0.0.0.0:8080")
+                .parse()
+                .context("HEALTH_ADDR must be <ip>:<port>")?,
         })
     }
 }

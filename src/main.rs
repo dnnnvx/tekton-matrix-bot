@@ -1,14 +1,15 @@
 mod commands;
 mod config;
 mod handlers;
+mod health;
 mod session;
 
 use anyhow::Context;
-use matrix_sdk::config::SyncSettings;
+use matrix_sdk::{Client, LoopCtrl, config::SyncSettings};
 use tokio::signal::unix::{SignalKind, signal};
-use tracing::info;
+use tracing::{info, warn};
 
-use crate::config::Config;
+use crate::{config::Config, health::Health};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
@@ -20,10 +21,13 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::from_env()?;
+    let health = Health::default();
+    health::serve(config.health_addr, health.clone()).await?;
     let client = session::login(&config).await?;
 
     // Handlers are registered after the first sync so the bot doesn't answer the backlog.
     let response = client.sync_once(SyncSettings::default()).await?;
+    health.synced();
     client.add_event_handler(handlers::on_invite);
     client.add_event_handler(handlers::on_message);
     let user = client.user_id().context("no user ID after login")?;
@@ -31,9 +35,24 @@ async fn main() -> anyhow::Result<()> {
 
     let mut sigterm = signal(SignalKind::terminate())?;
     tokio::select! {
-        res = client.sync(SyncSettings::default().token(response.next_batch)) => res?,
+        res = sync(&client, &health, response.next_batch) => res?,
         _ = sigterm.recv() => info!("SIGTERM, shutting down"),
         _ = tokio::signal::ctrl_c() => info!("SIGINT, shutting down"),
     }
     Ok(())
+}
+
+/// Syncs forever. A failed sync is logged and retried instead of ending the
+/// loop; if failures last, the liveness probe gets the pod restarted.
+async fn sync(client: &Client, health: &Health, token: String) -> matrix_sdk::Result<()> {
+    let settings = SyncSettings::default().token(token);
+    client
+        .sync_with_result_callback(settings, |result| async move {
+            match result {
+                Ok(_) => health.synced(),
+                Err(err) => warn!(%err, "sync failed"),
+            }
+            Ok(LoopCtrl::Continue)
+        })
+        .await
 }
