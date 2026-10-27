@@ -61,9 +61,13 @@ pub async fn login(config: &Config) -> anyhow::Result<Client> {
 /// Without a retry limit the SDK never retries network failures (timeouts,
 /// refused connections), so one blip fails the request for good, and with it
 /// the one-shot E2EE setup (cross-signing, backups, recovery) after login.
+///
+/// The login response's well-known would switch us to the public homeserver
+/// URL, which the bot can't reach: it only talks to the configured one.
 async fn open(config: &Config) -> anyhow::Result<(Client, StoreCipher)> {
     let client = Client::builder()
         .homeserver_url(&config.homeserver)
+        .respect_login_well_known(false)
         .request_config(RequestConfig::new().retry_limit(5))
         .sqlite_store(
             config.data_dir.join("store"),
