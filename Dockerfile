@@ -2,9 +2,8 @@
 # build host's own arch (no emulation) and cross-compile when it isn't amd64.
 FROM --platform=$BUILDPLATFORM rust:1.99-slim-trixie AS deps
 WORKDIR /src
-# Cap rustc parallelism to keep the build pod's peak memory down. Override with
-# `--build-arg CARGO_BUILD_JOBS=<n>`; ENV carries it into the stages below.
-ARG CARGO_BUILD_JOBS=2
+# One rustc at a time, override with `--build-arg CARGO_BUILD_JOBS=<n>`.
+ARG CARGO_BUILD_JOBS=1
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs
