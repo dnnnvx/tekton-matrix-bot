@@ -43,6 +43,9 @@ DATA_DIR=./data MATRIX_HOMESERVER=https://matrix.casasulgorgo.net \
   STORE_PASSPHRASE=… MATRIX_USER=… MATRIX_PASSWORD=… cargo run
 ```
 
+`cargo fmt`, `clippy` and the tests run in the pre-commit hook (`.githooks/pre-commit`), not in the image build.
+The nix dev shell enables it; otherwise run `git config core.hooksPath .githooks`.
+
 ## Layout
 
 | File | Role |

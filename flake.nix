@@ -28,6 +28,7 @@
           __darwinAllowLocalNetworking = true;
           shellHook = ''
             echo "Hello!"
+            git config core.hooksPath .githooks
           '';
           packages = with pkgs; [
             rust

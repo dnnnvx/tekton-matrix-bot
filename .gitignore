@@ -6,6 +6,7 @@
 !.gitignore
 !.envrc
 !.dockerignore
+!.githooks
 
 # Temporary noted and todos
 /*.md

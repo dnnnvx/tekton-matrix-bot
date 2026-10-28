@@ -1,0 +1,6 @@
+#!/bin/sh
+# The image build doesn't run these, so this is the only gate.
+set -e
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
