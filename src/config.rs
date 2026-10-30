@@ -6,6 +6,7 @@
 use std::{env, fs, net::SocketAddr, path::PathBuf};
 
 use anyhow::Context;
+use matrix_sdk::ruma::OwnedRoomId;
 
 pub struct Config {
     pub homeserver: String,
@@ -15,6 +16,9 @@ pub struct Config {
     pub user: Option<String>,
     pub password: Option<String>,
     pub health_addr: SocketAddr,
+    pub tekton_dashboard_url: String,
+    /// Where cluster commands are allowed and CI alerts go.
+    pub ops_room: OwnedRoomId,
 }
 
 impl Config {
@@ -30,6 +34,12 @@ impl Config {
                 .unwrap_or("0.0.0.0:8080")
                 .parse()
                 .context("HEALTH_ADDR must be <ip>:<port>")?,
+            tekton_dashboard_url: var("TEKTON_DASHBOARD_URL")?
+                .context("TEKTON_DASHBOARD_URL is required")?,
+            ops_room: var("OPS_ROOM")?
+                .context("OPS_ROOM is required")?
+                .parse()
+                .context("OPS_ROOM must be a room ID")?,
         })
     }
 }

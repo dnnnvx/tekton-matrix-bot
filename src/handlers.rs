@@ -2,6 +2,7 @@
 
 use matrix_sdk::{
     Client, Room, RoomState,
+    event_handler::Ctx,
     ruma::events::room::{
         member::StrippedRoomMemberEvent,
         message::{
@@ -12,7 +13,7 @@ use matrix_sdk::{
 };
 use tracing::{error, info, warn};
 
-use crate::commands;
+use crate::{cluster::Cluster, commands};
 
 pub async fn on_invite(event: StrippedRoomMemberEvent, client: Client, room: Room) {
     if Some(event.state_key.as_ref()) != client.user_id() {
@@ -24,7 +25,12 @@ pub async fn on_invite(event: StrippedRoomMemberEvent, client: Client, room: Roo
     }
 }
 
-pub async fn on_message(event: OriginalSyncRoomMessageEvent, client: Client, room: Room) {
+pub async fn on_message(
+    event: OriginalSyncRoomMessageEvent,
+    client: Client,
+    room: Room,
+    Ctx(cluster): Ctx<Cluster>,
+) {
     if room.state() != RoomState::Joined || Some(event.sender.as_ref()) == client.user_id() {
         return;
     }
@@ -35,7 +41,8 @@ pub async fn on_message(event: OriginalSyncRoomMessageEvent, client: Client, roo
 
     // Commands run in their own task so a slow one doesn't stall the sync loop.
     tokio::spawn(async move {
-        let reply = commands::dispatch(&body, client, room.clone(), event.sender.clone()).await;
+        let sender = event.sender.clone();
+        let reply = commands::dispatch(&body, client, room.clone(), sender, cluster).await;
         let Some(reply) = reply else {
             return;
         };

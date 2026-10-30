@@ -3,16 +3,20 @@
 //! Adding a command: create a module exposing a `COMMAND`, then list it in [`ALL`].
 //! `!help` is generated from the registry.
 
+mod ci;
 mod help;
 mod ping;
+mod tofu;
 
 use std::{future::Future, pin::Pin};
 
 use matrix_sdk::{Client, Room, ruma::OwnedUserId};
 use tracing::warn;
 
+use crate::cluster::Cluster;
+
 /// Every registered command, in `!help` order.
-pub const ALL: &[Command] = &[help::COMMAND, ping::COMMAND];
+pub const ALL: &[Command] = &[help::COMMAND, ping::COMMAND, ci::COMMAND, tofu::COMMAND];
 
 pub struct Command {
     pub name: &'static str,
@@ -34,6 +38,7 @@ pub struct Ctx {
     pub sender: OwnedUserId,
     /// Text after the command name, trimmed. Commands parse it however they need.
     pub args: String,
+    pub cluster: Cluster,
 }
 
 /// Runs the command in `body`. `None` when `body` isn't a command, so the bot stays quiet.
@@ -42,6 +47,7 @@ pub async fn dispatch(
     client: Client,
     room: Room,
     sender: OwnedUserId,
+    cluster: Cluster,
 ) -> Option<String> {
     let (name, args) = parse(body)?;
     let Some(command) = find(name) else {
@@ -52,6 +58,7 @@ pub async fn dispatch(
         room,
         sender,
         args: args.to_owned(),
+        cluster,
     };
     match (command.run)(ctx).await {
         Ok(reply) => Some(reply),

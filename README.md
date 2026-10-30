@@ -12,12 +12,21 @@ It joins rooms it's invited to and answers `!commands` (`!help` lists them) as r
 | `MATRIX_USER`, `MATRIX_PASSWORD` | first start only | used to log in when there's no saved session |
 | `DATA_DIR` | no (`/data`) | holds `store/` |
 | `HEALTH_ADDR` | no (`0.0.0.0:8080`) | where the health probes are served |
+| `TEKTON_DASHBOARD_URL` | yes | e.g. `https://tekton.local.casasulgorgo.net`, for links to CI runs |
+| `OPS_ROOM` | yes | room ID, the only room where `!ci` and `!tofu` answer and where failed CI runs are posted; use an encrypted, invite-only room |
 | `RUST_LOG` | no | tracing filter, default `info,matrix_sdk=warn` |
 
 Any variable can instead be given as `<NAME>_FILE`, pointing at a file holding the value (for mounted secrets).
 
 Everything lives in `store/`: the crypto state and the session (access token, device ID), sealed under `STORE_PASSPHRASE`.
 Keep it on a persistent volume. Wiping it means a new login, i.e. a new device, which can't decrypt messages the old one received.
+
+## Cluster access
+
+The bot talks to Kubernetes with the in-cluster service account, or the local kubeconfig when run outside the cluster, and only reads:
+
+- `!ci` lists PipelineRuns in `tekton-ci`, linking to the Tekton dashboard. Failed runs are also posted to `OPS_ROOM`, except those that failed while the bot was down.
+- `!tofu` shows the pending plan of the `production` Terraform in `flux-system`, and the `kubectl` command to approve it. Applying is left to whoever runs that command.
 
 ## Health probes
 
@@ -55,6 +64,8 @@ The nix dev shell enables it; otherwise run `git config core.hooksPath .githooks
 | `src/session.rs` | login and session persistence |
 | `src/health.rs` | liveness and readiness probes |
 | `src/handlers.rs` | Matrix event handlers (invites, messages) |
+| `src/cluster.rs` | Kubernetes access shared by commands and alerts |
+| `src/alerts.rs` | posts failed CI runs to the ops room |
 | `src/commands/` | command registry, parsing and dispatch, one module per command |
 
 ## Adding a command
@@ -78,5 +89,5 @@ async fn run(ctx: Ctx) -> Reply {
 ```
 
 Then declare it with `mod <name>;` in `src/commands/mod.rs` and add it to `ALL`; `!help` picks it up automatically.
-The command gets the client, room, sender and raw arguments through `Ctx`; an `Err` is logged and reported to the sender.
+The command gets the client, room, sender, raw arguments and cluster access through `Ctx`; an `Err` is logged and reported to the sender.
 Each command runs in its own task, so slow ones don't hold up the bot.

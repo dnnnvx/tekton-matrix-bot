@@ -1,3 +1,5 @@
+mod alerts;
+mod cluster;
 mod commands;
 mod config;
 mod handlers;
@@ -9,7 +11,7 @@ use matrix_sdk::{Client, LoopCtrl, config::SyncSettings};
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::{info, warn};
 
-use crate::{config::Config, health::Health};
+use crate::{cluster::Cluster, config::Config, health::Health};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
@@ -21,6 +23,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::from_env()?;
+    let cluster = Cluster::connect(&config).await?;
     let health = Health::default();
     health::serve(config.health_addr, health.clone()).await?;
     let client = session::login(&config).await?;
@@ -28,8 +31,10 @@ async fn main() -> anyhow::Result<()> {
     // Handlers are registered after the first sync so the bot doesn't answer the backlog.
     let response = client.sync_once(SyncSettings::default()).await?;
     health.synced();
+    client.add_event_handler_context(cluster.clone());
     client.add_event_handler(handlers::on_invite);
     client.add_event_handler(handlers::on_message);
+    tokio::spawn(alerts::watch_ci(client.clone(), cluster));
     let user = client.user_id().context("no user ID after login")?;
     info!(%user, "ready");
 
