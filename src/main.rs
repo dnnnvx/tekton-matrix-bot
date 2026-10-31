@@ -31,6 +31,12 @@ async fn main() -> anyhow::Result<()> {
     // Handlers are registered after the first sync so the bot doesn't answer the backlog.
     let response = client.sync_once(SyncSettings::default()).await?;
     health.synced();
+    // Optional, and the bot works without it: a failure doesn't stop it from starting.
+    if let Some(passphrase) = &config.recovery_passphrase
+        && let Err(err) = session::recover(&client, passphrase).await
+    {
+        warn!("recovery failed: {err:#}");
+    }
     client.add_event_handler_context(cluster.clone());
     client.add_event_handler(handlers::on_invite);
     client.add_event_handler(handlers::on_message);

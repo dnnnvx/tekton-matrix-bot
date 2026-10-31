@@ -10,6 +10,7 @@ It joins rooms it's invited to and answers `!commands` (`!help` lists them) as r
 | `MATRIX_HOMESERVER` | yes | e.g. `http://tuwunel.matrix.svc.cluster.local:8008` |
 | `STORE_PASSPHRASE` | yes | encrypts the SQLite store, including the saved session |
 | `MATRIX_USER`, `MATRIX_PASSWORD` | first start only | used to log in when there's no saved session |
+| `RECOVERY_PASSPHRASE` | no | keeps the cross-signing keys on the server, encrypted under it, so a new device can sign itself |
 | `DATA_DIR` | no (`/data`) | holds `store/` |
 | `HEALTH_ADDR` | no (`0.0.0.0:8080`) | where the health probes are served |
 | `TEKTON_DASHBOARD_URL` | yes | e.g. `https://tekton.local.casasulgorgo.net`, for links to CI runs |
@@ -20,6 +21,12 @@ Any variable can instead be given as `<NAME>_FILE`, pointing at a file holding t
 
 Everything lives in `store/`: the crypto state and the session (access token, device ID), sealed under `STORE_PASSPHRASE`.
 Keep it on a persistent volume. Wiping it means a new login, i.e. a new device, which can't decrypt messages the old one received.
+
+## Device verification
+
+The bot sets up cross-signing by itself and signs its device, so clients don't warn about its messages. The account must not already have cross-signing keys, for example from logging in to it with another client: the bot can't sign itself with keys it doesn't hold, and clients keep warning.
+
+The private keys live in `store/`, so a new device can't sign itself and the warning returns. To avoid that, set `RECOVERY_PASSPHRASE`. On start, the bot stores the keys on the server encrypted under it, along with a server-side backup of room keys, and a later new device fetches them back. Keep it stable and treat it like a password: whoever has it and access to the account can sign devices as the bot. A recovery key or passphrase set up from another client works too, as long as secret storage holds the keys.
 
 ## Cluster access
 

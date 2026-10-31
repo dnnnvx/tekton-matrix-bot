@@ -10,12 +10,16 @@
 //! client, server restored from a backup). The crypto store still believes they
 //! are uploaded and never re-uploads them, so nobody can encrypt to us anymore:
 //! we log that device out, wipe the store and start over with a new one.
+//!
+//! A new device isn't signed by the account's cross-signing keys, and clients
+//! warn about its messages, unless it can get those keys back through recovery.
 
 use anyhow::Context;
 use matrix_sdk::{
     Client,
     authentication::matrix::MatrixSession,
     config::RequestConfig,
+    encryption::{EncryptionSettings, recovery::RecoveryState},
     ruma::{api::client::keys::get_keys, assign},
 };
 use matrix_sdk_store_encryption::StoreCipher;
@@ -56,6 +60,35 @@ pub async fn login(config: &Config) -> anyhow::Result<Client> {
     Ok(client)
 }
 
+/// Stores the cross-signing keys on the server under the passphrase, or, on a new
+/// device, fetches them from there and signs the device with them.
+///
+/// Needs the first sync done: a new device has to have uploaded its keys to be signed.
+pub async fn recover(client: &Client, passphrase: &str) -> anyhow::Result<()> {
+    let encryption = client.encryption();
+    encryption.wait_for_e2ee_initialization_tasks().await;
+    let recovery = encryption.recovery();
+    match recovery.state() {
+        RecoveryState::Enabled => {}
+        RecoveryState::Incomplete => {
+            recovery.recover(passphrase).await?;
+            info!("fetched cross-signing keys from recovery");
+        }
+        RecoveryState::Disabled => {
+            // Enabling without the keys would store nothing worth recovering.
+            let complete = encryption
+                .cross_signing_status()
+                .await
+                .is_some_and(|status| status.is_complete());
+            anyhow::ensure!(complete, "this device doesn't hold the cross-signing keys");
+            recovery.enable().with_passphrase(passphrase).await?;
+            info!("enabled recovery");
+        }
+        RecoveryState::Unknown => anyhow::bail!("recovery state is unknown"),
+    }
+    Ok(())
+}
+
 /// Builds the client on the SQLite store, and loads our cipher from it.
 ///
 /// Without a retry limit the SDK never retries network failures (timeouts,
@@ -69,6 +102,10 @@ async fn open(config: &Config) -> anyhow::Result<(Client, StoreCipher)> {
         .homeserver_url(&config.homeserver)
         .respect_login_well_known(false)
         .request_config(RequestConfig::new().retry_limit(5))
+        .with_encryption_settings(EncryptionSettings {
+            auto_enable_cross_signing: true,
+            ..Default::default()
+        })
         .sqlite_store(
             config.data_dir.join("store"),
             Some(&config.store_passphrase),

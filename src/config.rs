@@ -15,6 +15,8 @@ pub struct Config {
     /// Only needed on first start, when there's no saved session yet.
     pub user: Option<String>,
     pub password: Option<String>,
+    /// Keeps a copy of the cross-signing keys on the server when set.
+    pub recovery_passphrase: Option<String>,
     pub health_addr: SocketAddr,
     pub tekton_dashboard_url: String,
     /// Where cluster commands are allowed and CI alerts go.
@@ -29,6 +31,7 @@ impl Config {
             store_passphrase: var("STORE_PASSPHRASE")?.context("STORE_PASSPHRASE is required")?,
             user: var("MATRIX_USER")?,
             password: var("MATRIX_PASSWORD")?,
+            recovery_passphrase: var("RECOVERY_PASSPHRASE")?,
             health_addr: var("HEALTH_ADDR")?
                 .as_deref()
                 .unwrap_or("0.0.0.0:8080")
