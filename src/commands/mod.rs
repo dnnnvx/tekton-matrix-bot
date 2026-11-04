@@ -6,7 +6,7 @@
 mod ci;
 mod help;
 mod ping;
-mod tofu;
+pub mod tofu;
 
 use std::{future::Future, pin::Pin};
 

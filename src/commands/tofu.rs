@@ -7,7 +7,7 @@ use kube::{
 };
 
 use super::{Command, Ctx, Reply};
-use crate::cluster::condition;
+use crate::cluster::{Cluster, condition};
 
 pub const COMMAND: Command = Command {
     name: "tofu",
@@ -24,8 +24,13 @@ const MAX_PLAN_BYTES: usize = 20_000;
 
 async fn run(ctx: Ctx) -> Reply {
     ctx.cluster.ensure_ops_room(ctx.room.room_id())?;
-    let kube = &ctx.cluster.kube;
+    let (terraform, stored) = fetch(&ctx.cluster).await?;
+    render(&terraform, stored.as_ref())
+}
 
+/// The Terraform object, and the ConfigMap holding its readable plan if there is one.
+pub async fn fetch(cluster: &Cluster) -> anyhow::Result<(DynamicObject, Option<ConfigMap>)> {
+    let kube = &cluster.kube;
     let gvk = GroupVersionKind::gvk("infra.contrib.fluxcd.io", "v1alpha2", "Terraform");
     let resource = ApiResource::from_gvk_with_plural(&gvk, "terraforms");
     let terraforms = Api::<DynamicObject>::namespaced_with(kube.clone(), NAMESPACE, &resource);
@@ -34,10 +39,28 @@ async fn run(ctx: Ctx) -> Reply {
     let stored = Api::<ConfigMap>::namespaced(kube.clone(), NAMESPACE)
         .get_opt(PLAN_CONFIGMAP)
         .await?;
-    render(&terraform, stored.as_ref())
+    Ok((terraform, stored))
 }
 
-fn render(terraform: &DynamicObject, stored: Option<&ConfigMap>) -> Reply {
+fn pending(terraform: &DynamicObject) -> Option<&str> {
+    let pending = terraform.data["status"]["plan"]["pending"].as_str();
+    pending.filter(|p| !p.is_empty())
+}
+
+fn saved(stored: Option<&ConfigMap>) -> Option<&str> {
+    let annotations = stored?.metadata.annotations.as_ref()?;
+    annotations.get("savedPlan").map(String::as_str)
+}
+
+/// The pending plan, once its readable text is stored and [`render`] can show it.
+pub fn stored_pending<'a>(
+    terraform: &'a DynamicObject,
+    stored: Option<&ConfigMap>,
+) -> Option<&'a str> {
+    pending(terraform).filter(|p| saved(stored) == Some(*p))
+}
+
+pub fn render(terraform: &DynamicObject, stored: Option<&ConfigMap>) -> Reply {
     let mut reply = format!("**Tofu** `{TERRAFORM}`");
     if let Some(ready) = condition(terraform, "Ready") {
         write!(reply, ": ready `{}` (`{}`)", ready.status, ready.reason)?;
@@ -46,15 +69,13 @@ fn render(terraform: &DynamicObject, stored: Option<&ConfigMap>) -> Reply {
     if let Some(applied) = plan_field("lastApplied").filter(|p| !p.is_empty()) {
         write!(reply, "\n\nLast applied: `{applied}`")?;
     }
-    let Some(pending) = plan_field("pending").filter(|p| !p.is_empty()) else {
+    let Some(pending) = pending(terraform) else {
         reply.push_str("\n\nNo pending plan.");
         return Ok(reply);
     };
     write!(reply, "\n\n**Pending:** `{pending}`")?;
 
-    let saved = stored
-        .and_then(|c| c.metadata.annotations.as_ref()?.get("savedPlan"))
-        .map(String::as_str);
+    let saved = saved(stored);
     let text = stored.and_then(|c| c.data.as_ref()?.get("tfplan"));
     match text {
         // A stored plan from another revision isn't what the command below would apply.
@@ -86,7 +107,7 @@ fn cut(text: &str) -> &str {
 }
 
 /// A fence longer than any backtick run in the text, which can't close it early then.
-fn code_block(text: &str) -> String {
+pub fn code_block(text: &str) -> String {
     let longest = text
         .split(|c| c != '`')
         .map(str::len)
@@ -153,6 +174,17 @@ mod tests {
 
         let reply = render(&terraform("plan-main-new"), None).unwrap();
         assert!(reply.contains("⚠️ The plan isn't stored yet"));
+    }
+
+    #[test]
+    fn pending_counts_as_stored_once_its_text_is() {
+        let pending = terraform("plan-main-new");
+        let new = stored("plan-main-new", "new plan");
+        let other = stored("plan-main-other", "other plan");
+        assert_eq!(stored_pending(&pending, Some(&new)), Some("plan-main-new"));
+        assert_eq!(stored_pending(&pending, Some(&other)), None);
+        assert_eq!(stored_pending(&pending, None), None);
+        assert_eq!(stored_pending(&terraform(""), Some(&new)), None);
     }
 
     #[test]

@@ -14,7 +14,9 @@ It joins rooms it's invited to and answers `!commands` (`!help` lists them) as r
 | `DATA_DIR` | no (`/data`) | holds `store/` |
 | `HEALTH_ADDR` | no (`0.0.0.0:8080`) | where the health probes are served |
 | `TEKTON_DASHBOARD_URL` | yes | e.g. `https://tekton.local.casasulgorgo.net`, for links to CI runs |
-| `OPS_ROOM` | yes | room ID, the only room where `!ci` and `!tofu` answer and where failed CI runs are posted; use an encrypted, invite-only room |
+| `OPS_ROOM` | yes | room ID, the only room where `!ci` and `!tofu` answer and where CI runs and tofu plans are posted; use an encrypted, invite-only room |
+| `TOFU_POLL_MINUTES` | no (`30`) | how often the pending tofu plan is checked |
+| `TEKTON_GC_HOURS` | no (`24`) | a CI run still running after this long is forgotten, in case its end was missed |
 | `RUST_LOG` | no | tracing filter, default `info,matrix_sdk=warn` |
 
 Any variable can instead be given as `<NAME>_FILE`, pointing at a file holding the value (for mounted secrets).
@@ -32,8 +34,12 @@ The private keys live in `store/`, so a new device can't sign itself and the war
 
 The bot talks to Kubernetes with the in-cluster service account, or the local kubeconfig when run outside the cluster, and only reads:
 
-- `!ci` lists PipelineRuns in `tekton-ci`, linking to the Tekton dashboard. Failed runs are also posted to `OPS_ROOM`, except those that failed while the bot was down.
-- `!tofu` shows the pending plan of the `production` Terraform in `flux-system`, and the `kubectl` command to approve it. Applying is left to whoever runs that command.
+- `!ci` lists PipelineRuns in `tekton-ci`, linking to the Tekton dashboard.
+- Each run's start is posted to `OPS_ROOM`, and the message is edited into the result when it ends; since clients usually don't notify on edits, a failure also gets a reply with the last log lines of the failed step. Runs that start and end while the bot is down aren't posted.
+- `!tofu` shows the pending plan of the `production` Terraform in `flux-system`, and the `kubectl` command to approve it. Applying is left to whoever runs that command. Every `TOFU_POLL_MINUTES`, a pending plan is posted the same way, as a reminder of the drift, once its readable text is stored.
+
+The service account needs, in `tekton-ci`: `get`, `list`, `watch` on `pipelineruns`, `list` on `taskruns`, `get` on `pods/log`; in `flux-system`: `get` on `terraforms` and `configmaps`.
+Failure logs are posted as they are: a step that prints a secret puts it in the room's history.
 
 ## Health probes
 
@@ -72,7 +78,7 @@ The nix dev shell enables it; otherwise run `git config core.hooksPath .githooks
 | `src/health.rs` | liveness and readiness probes |
 | `src/handlers.rs` | Matrix event handlers (invites, messages) |
 | `src/cluster.rs` | Kubernetes access shared by commands and alerts |
-| `src/alerts.rs` | posts failed CI runs to the ops room |
+| `src/alerts.rs` | posts CI runs and pending tofu plans to the ops room |
 | `src/commands/` | command registry, parsing and dispatch, one module per command |
 
 ## Adding a command

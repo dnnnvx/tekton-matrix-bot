@@ -40,7 +40,12 @@ async fn main() -> anyhow::Result<()> {
     client.add_event_handler_context(cluster.clone());
     client.add_event_handler(handlers::on_invite);
     client.add_event_handler(handlers::on_message);
-    tokio::spawn(alerts::watch_ci(client.clone(), cluster));
+    tokio::spawn(alerts::watch_ci(
+        client.clone(),
+        cluster.clone(),
+        config.tekton_gc,
+    ));
+    tokio::spawn(alerts::poll_tofu(client.clone(), cluster, config.tofu_poll));
     let user = client.user_id().context("no user ID after login")?;
     info!(%user, "ready");
 
