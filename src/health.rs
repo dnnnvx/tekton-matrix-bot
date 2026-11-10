@@ -49,7 +49,7 @@ pub async fn serve(addr: SocketAddr, health: Health) -> anyhow::Result<()> {
     info!(%addr, "health server listening");
     tokio::spawn(async move {
         if let Err(err) = axum::serve(listener, app).await {
-            error!(%err, "health server stopped");
+            error!("health server stopped: {err:#}");
         }
     });
     Ok(())

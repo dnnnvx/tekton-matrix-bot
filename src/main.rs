@@ -70,7 +70,7 @@ async fn sync(client: &Client, health: &Health, token: String) -> matrix_sdk::Re
         .sync_with_result_callback(settings, |result| async move {
             match result {
                 Ok(_) => health.synced(),
-                Err(err) => warn!(%err, "sync failed"),
+                Err(err) => warn!("sync failed: {err:#}"),
             }
             Ok(LoopCtrl::Continue)
         })

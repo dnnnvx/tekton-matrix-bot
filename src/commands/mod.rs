@@ -54,9 +54,9 @@ pub async fn dispatch(body: &str, room: Room, cluster: Cluster) -> Option<String
     };
     match run(command, ctx).await {
         Ok(reply) => Some(reply),
-        Err(e) => {
-            warn!(command = command.name, "failed: {e:#}");
-            Some(format!("`!{}` failed: {e}", command.name))
+        Err(err) => {
+            warn!(command = command.name, "failed: {err:#}");
+            Some(format!("`!{}` failed: {err}", command.name))
         }
     }
 }

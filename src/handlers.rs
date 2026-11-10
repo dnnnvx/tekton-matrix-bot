@@ -16,8 +16,8 @@ pub async fn on_invite(event: StrippedRoomMemberEvent, client: Client, room: Roo
         return;
     }
     info!(room = %room.room_id(), inviter = %event.sender, "invited");
-    if let Err(e) = room.join().await {
-        warn!(room = %room.room_id(), "join failed: {e}");
+    if let Err(err) = room.join().await {
+        warn!(room = %room.room_id(), "join failed: {err:#}");
     }
 }
 
@@ -46,8 +46,8 @@ pub async fn on_message(
             ForwardThread::Yes,
             AddMentions::No,
         );
-        if let Err(e) = room.send(content).await {
-            error!(room = %room.room_id(), "send failed: {e}");
+        if let Err(err) = room.send(content).await {
+            error!(room = %room.room_id(), "send failed: {err:#}");
         }
     });
 }

@@ -32,8 +32,8 @@ pub async fn watch_ci(client: Client, cluster: Cluster, gc: Duration) {
     while let Some(event) = events.next().await {
         let event = match event {
             Ok(event) => event,
-            Err(e) => {
-                warn!("watching PipelineRuns failed: {e}");
+            Err(err) => {
+                warn!("watching PipelineRuns failed: {err:#}");
                 continue;
             }
         };
@@ -66,8 +66,8 @@ async fn post_end(
     let (url, room) = (&cluster.dashboard_url, &cluster.ops_room);
     let failure = match run_state(run) {
         RunState::Failed(_) => {
-            let logs = cluster.failure_logs(run).await.inspect_err(|e| {
-                warn!(run = run_name(run), "no failure logs: {e:#}");
+            let logs = cluster.failure_logs(run).await.inspect_err(|err| {
+                warn!(run = run_name(run), "no failure logs: {err:#}");
             });
             Some(message(url, run, logs.ok().as_deref()))
         }
@@ -98,8 +98,8 @@ pub async fn poll_tofu(client: Client, cluster: Cluster, every: Duration) {
         ticks.tick().await;
         let plan = match Plan::fetch(&cluster).await {
             Ok(plan) => plan,
-            Err(e) => {
-                warn!("checking the tofu plan failed: {e:#}");
+            Err(err) => {
+                warn!("checking the tofu plan failed: {err:#}");
                 continue;
             }
         };
@@ -108,8 +108,8 @@ pub async fn poll_tofu(client: Client, cluster: Cluster, every: Duration) {
         }
         let text = match plan.render() {
             Ok(text) => text,
-            Err(e) => {
-                error!("rendering the tofu plan failed: {e:#}");
+            Err(err) => {
+                error!("rendering the tofu plan failed: {err:#}");
                 continue;
             }
         };
@@ -130,8 +130,8 @@ async fn post(
     };
     match room.send(content).await {
         Ok(sent) => Some(sent.response.event_id),
-        Err(e) => {
-            error!(room = %room_id, "send failed: {e}");
+        Err(err) => {
+            error!(room = %room_id, "send failed: {err:#}");
             None
         }
     }

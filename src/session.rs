@@ -50,7 +50,7 @@ pub async fn login(config: &Config) -> anyhow::Result<Client> {
     warn!("our device keys are gone from the server, replacing the device");
     // Deletes the old device server-side; the wipe below happens regardless.
     if let Err(err) = client.logout().await {
-        warn!(%err, "logging out the old device");
+        warn!("logging out the old device: {err:#}");
     }
     drop(client);
     let store = config.data_dir.join("store");
