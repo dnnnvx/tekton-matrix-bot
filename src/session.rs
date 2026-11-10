@@ -15,13 +15,13 @@
 //! warn about its messages, unless it can get those keys back through recovery.
 
 use anyhow::Context;
-use matrix_sdk::{
-    Client,
-    authentication::matrix::MatrixSession,
-    config::RequestConfig,
-    encryption::{EncryptionSettings, recovery::RecoveryState},
-    ruma::{api::client::keys::get_keys, assign},
-};
+use matrix_sdk::Client;
+use matrix_sdk::authentication::matrix::MatrixSession;
+use matrix_sdk::config::RequestConfig;
+use matrix_sdk::encryption::EncryptionSettings;
+use matrix_sdk::encryption::recovery::RecoveryState;
+use matrix_sdk::ruma::api::client::keys::get_keys;
+use matrix_sdk::ruma::assign;
 use matrix_sdk_store_encryption::StoreCipher;
 use tracing::{info, warn};
 

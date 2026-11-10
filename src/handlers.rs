@@ -1,19 +1,15 @@
 //! Matrix event handlers.
 
-use matrix_sdk::{
-    Client, Room, RoomState,
-    event_handler::Ctx,
-    ruma::events::room::{
-        member::StrippedRoomMemberEvent,
-        message::{
-            AddMentions, ForwardThread, MessageType, OriginalSyncRoomMessageEvent,
-            RoomMessageEventContent,
-        },
-    },
+use matrix_sdk::event_handler::Ctx;
+use matrix_sdk::ruma::events::room::member::StrippedRoomMemberEvent;
+use matrix_sdk::ruma::events::room::message::{
+    AddMentions, ForwardThread, MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
 };
+use matrix_sdk::{Client, Room, RoomState};
 use tracing::{error, info, warn};
 
-use crate::{cluster::Cluster, commands};
+use crate::cluster::Cluster;
+use crate::commands;
 
 pub async fn on_invite(event: StrippedRoomMemberEvent, client: Client, room: Room) {
     if Some(event.state_key.as_ref()) != client.user_id() {

@@ -6,14 +6,15 @@
 //! - `/health/ready`: passes once the first sync is done and the last one is
 //!   recent. A long-poll returns at least every 30s, even with nothing new.
 
-use std::{
-    net::SocketAddr,
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
-};
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use axum::{Router, extract::State, http::StatusCode, routing::get};
+use axum::Router;
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::routing::get;
 use tokio::net::TcpListener;
 use tracing::{error, info};
 

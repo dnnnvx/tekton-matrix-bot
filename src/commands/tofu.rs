@@ -1,10 +1,8 @@
 use std::fmt::Write;
 
 use k8s_openapi::api::core::v1::ConfigMap;
-use kube::{
-    Api,
-    api::{ApiResource, DynamicObject, GroupVersionKind},
-};
+use kube::Api;
+use kube::api::{ApiResource, DynamicObject, GroupVersionKind};
 
 use super::{Command, Ctx, Reply};
 use crate::cluster::{Cluster, condition};

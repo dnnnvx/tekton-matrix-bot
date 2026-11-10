@@ -7,11 +7,14 @@ mod health;
 mod session;
 
 use anyhow::Context;
-use matrix_sdk::{Client, LoopCtrl, config::SyncSettings};
+use matrix_sdk::config::SyncSettings;
+use matrix_sdk::{Client, LoopCtrl};
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::{info, warn};
 
-use crate::{cluster::Cluster, config::Config, health::Health};
+use crate::cluster::Cluster;
+use crate::config::Config;
+use crate::health::Health;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {

@@ -3,7 +3,10 @@
 //! Every variable can also be given as `<NAME>_FILE` pointing at a file holding
 //! the value (Docker/Kubernetes secrets); the file wins over the plain variable.
 
-use std::{env, fs, net::SocketAddr, path::PathBuf, time::Duration};
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::{env, fs};
 
 use anyhow::Context;
 use matrix_sdk::ruma::OwnedRoomId;

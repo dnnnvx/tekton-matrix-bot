@@ -2,10 +2,8 @@
 
 use anyhow::Context;
 use k8s_openapi::api::core::v1::Pod;
-use kube::{
-    Api,
-    api::{ApiResource, DynamicObject, GroupVersionKind, ListParams, LogParams},
-};
+use kube::Api;
+use kube::api::{ApiResource, DynamicObject, GroupVersionKind, ListParams, LogParams};
 use matrix_sdk::ruma::{OwnedRoomId, RoomId};
 
 use crate::config::Config;

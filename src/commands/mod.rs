@@ -8,9 +8,11 @@ mod help;
 mod ping;
 pub mod tofu;
 
-use std::{future::Future, pin::Pin};
+use std::future::Future;
+use std::pin::Pin;
 
-use matrix_sdk::{Client, Room, ruma::OwnedUserId};
+use matrix_sdk::ruma::OwnedUserId;
+use matrix_sdk::{Client, Room};
 use tracing::warn;
 
 use crate::cluster::Cluster;

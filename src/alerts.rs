@@ -1,32 +1,22 @@
 //! Posts CI runs and pending tofu plans to the ops room.
 
-use std::{
-    collections::HashMap,
-    pin::pin,
-    time::{Duration, Instant},
-};
+use std::collections::HashMap;
+use std::pin::pin;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
-use kube::{
-    api::DynamicObject,
-    runtime::{WatchStreamExt, watcher},
+use kube::api::DynamicObject;
+use kube::runtime::{WatchStreamExt, watcher};
+use matrix_sdk::Client;
+use matrix_sdk::ruma::events::relation::Reply;
+use matrix_sdk::ruma::events::room::message::{
+    Relation, ReplacementMetadata, RoomMessageEventContent,
 };
-use matrix_sdk::{
-    Client,
-    ruma::{
-        OwnedEventId, RoomId,
-        events::{
-            relation::Reply,
-            room::message::{Relation, ReplacementMetadata, RoomMessageEventContent},
-        },
-    },
-};
+use matrix_sdk::ruma::{OwnedEventId, RoomId};
 use tracing::{error, warn};
 
-use crate::{
-    cluster::{Cluster, condition, run_failure, run_is_active, run_link},
-    commands::tofu,
-};
+use crate::cluster::{Cluster, condition, run_failure, run_is_active, run_link};
+use crate::commands::tofu;
 
 /// Enough for the error, short enough to read in a chat. An event caps at 65 KB.
 const MAX_LOG_BYTES: usize = 4_000;
