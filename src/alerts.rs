@@ -16,7 +16,7 @@ use matrix_sdk::ruma::{OwnedEventId, RoomId};
 use tracing::{error, warn};
 
 use crate::cluster::{Cluster, RunState, run_link, run_name, run_state};
-use crate::commands::tofu;
+use crate::commands::tofu::Plan;
 use crate::markdown::{code_block, tail};
 
 /// Enough for the error, short enough to read in a chat. An event caps at 65 KB.
@@ -87,17 +87,17 @@ pub async fn poll_tofu(client: Client, cluster: Cluster, every: Duration) {
     let mut ticks = tokio::time::interval(every);
     loop {
         ticks.tick().await;
-        let (terraform, stored) = match tofu::fetch(&cluster).await {
-            Ok(found) => found,
+        let plan = match Plan::fetch(&cluster).await {
+            Ok(plan) => plan,
             Err(e) => {
                 warn!("checking the tofu plan failed: {e:#}");
                 continue;
             }
         };
-        if tofu::stored_pending(&terraform, stored.as_ref()).is_none() {
+        if plan.stored_pending().is_none() {
             continue;
         }
-        let text = match tofu::render(&terraform, stored.as_ref()) {
+        let text = match plan.render() {
             Ok(text) => text,
             Err(e) => {
                 error!("rendering the tofu plan failed: {e:#}");

@@ -23,80 +23,92 @@ const MAX_PLAN_BYTES: usize = 20_000;
 
 async fn run(ctx: Ctx) -> Reply {
     ctx.cluster.ensure_ops_room(ctx.room.room_id())?;
-    let (terraform, stored) = fetch(&ctx.cluster).await?;
-    render(&terraform, stored.as_ref())
+    Plan::fetch(&ctx.cluster).await?.render()
 }
 
 /// The Terraform object, and the ConfigMap holding its readable plan if there is one.
-pub async fn fetch(cluster: &Cluster) -> anyhow::Result<(DynamicObject, Option<ConfigMap>)> {
-    let gvk = GroupVersionKind::gvk("infra.contrib.fluxcd.io", "v1alpha2", "Terraform");
-    let terraforms = cluster.custom(&gvk, "terraforms", NAMESPACE);
-    let terraform = terraforms.get(TERRAFORM).await?;
-
-    let stored = Api::<ConfigMap>::namespaced(cluster.kube.clone(), NAMESPACE)
-        .get_opt(PLAN_CONFIGMAP)
-        .await?;
-    Ok((terraform, stored))
+pub struct Plan {
+    terraform: DynamicObject,
+    stored: Option<ConfigMap>,
 }
 
-fn pending(terraform: &DynamicObject) -> Option<&str> {
-    let pending = terraform.data["status"]["plan"]["pending"].as_str();
-    pending.filter(|p| !p.is_empty())
-}
+impl Plan {
+    pub async fn fetch(cluster: &Cluster) -> anyhow::Result<Self> {
+        let gvk = GroupVersionKind::gvk("infra.contrib.fluxcd.io", "v1alpha2", "Terraform");
+        let terraforms = cluster.custom(&gvk, "terraforms", NAMESPACE);
+        let terraform = terraforms.get(TERRAFORM).await?;
 
-fn saved(stored: Option<&ConfigMap>) -> Option<&str> {
-    let annotations = stored?.metadata.annotations.as_ref()?;
-    annotations.get("savedPlan").map(String::as_str)
-}
-
-/// The pending plan, once its readable text is stored and [`render`] can show it.
-pub fn stored_pending<'a>(
-    terraform: &'a DynamicObject,
-    stored: Option<&ConfigMap>,
-) -> Option<&'a str> {
-    pending(terraform).filter(|p| saved(stored) == Some(*p))
-}
-
-pub fn render(terraform: &DynamicObject, stored: Option<&ConfigMap>) -> Reply {
-    let mut reply = format!("**Tofu** `{TERRAFORM}`");
-    if let Some(ready) = condition(terraform, "Ready") {
-        write!(reply, ": ready `{}` (`{}`)", ready.status, ready.reason)?;
+        let stored = Api::<ConfigMap>::namespaced(cluster.kube.clone(), NAMESPACE)
+            .get_opt(PLAN_CONFIGMAP)
+            .await?;
+        Ok(Self { terraform, stored })
     }
-    let plan_field = |field: &str| terraform.data["status"]["plan"][field].as_str();
-    if let Some(applied) = plan_field("lastApplied").filter(|p| !p.is_empty()) {
-        write!(reply, "\n\nLast applied: `{applied}`")?;
-    }
-    let Some(pending) = pending(terraform) else {
-        reply.push_str("\n\nNo pending plan.");
-        return Ok(reply);
-    };
-    write!(reply, "\n\n**Pending:** `{pending}`")?;
 
-    let saved = saved(stored);
-    let text = stored.and_then(|c| c.data.as_ref()?.get("tfplan"));
-    match text {
-        // A stored plan from another revision isn't what the command below would apply.
-        Some(text) if saved == Some(pending) => {
-            write!(reply, "\n\n{}", code_block(head(text, MAX_PLAN_BYTES)))?;
-            if text.len() > MAX_PLAN_BYTES {
-                reply.push_str("\n\nPlan cut short, see `just tofu-plans` for the rest.");
-            }
+    /// A non-empty field of the Terraform object's `status.plan`.
+    fn plan_status(&self, field: &str) -> Option<&str> {
+        let value = self.terraform.data["status"]["plan"][field].as_str();
+        value.filter(|v| !v.is_empty())
+    }
+
+    fn pending(&self) -> Option<&str> {
+        self.plan_status("pending")
+    }
+
+    /// The revision of the stored plan text.
+    fn saved(&self) -> Option<&str> {
+        let annotations = self.stored.as_ref()?.metadata.annotations.as_ref()?;
+        annotations.get("savedPlan").map(String::as_str)
+    }
+
+    /// The pending plan, once its readable text is stored and [`Plan::render`] can show it.
+    pub fn stored_pending(&self) -> Option<&str> {
+        self.pending()
+            .filter(|pending| self.saved() == Some(*pending))
+    }
+
+    pub fn render(&self) -> Reply {
+        let mut reply = format!("**Tofu** `{TERRAFORM}`");
+        if let Some(ready) = condition(&self.terraform, "Ready") {
+            write!(reply, ": ready `{}` (`{}`)", ready.status, ready.reason)?;
         }
-        Some(_) => write!(
-            reply,
-            "\n\n⚠️ The stored plan is `{}`, not the pending one, so it isn't shown.",
-            saved.unwrap_or("unknown")
-        )?,
-        None => reply.push_str("\n\n⚠️ The plan isn't stored yet, so it isn't shown."),
-    }
+        if let Some(applied) = self.plan_status("lastApplied") {
+            write!(reply, "\n\nLast applied: `{applied}`")?;
+        }
+        let Some(pending) = self.pending() else {
+            reply.push_str("\n\nNo pending plan.");
+            return Ok(reply);
+        };
+        write!(reply, "\n\n**Pending:** `{pending}`")?;
 
-    let patch = format!(r#"{{"spec":{{"approvePlan":"{pending}"}}}}"#);
-    let apply = format!(
-        "kubectl --context homelab -n {NAMESPACE} patch terraform {TERRAFORM} \
-         --type merge --field-manager tofu-approve -p '{patch}'"
-    );
-    write!(reply, "\n\nApply with:\n\n{}", code_block(&apply))?;
-    Ok(reply)
+        let saved = self.saved();
+        let text = self
+            .stored
+            .as_ref()
+            .and_then(|c| c.data.as_ref()?.get("tfplan"));
+        match text {
+            // A stored plan from another revision isn't what the command below would apply.
+            Some(text) if saved == Some(pending) => {
+                write!(reply, "\n\n{}", code_block(head(text, MAX_PLAN_BYTES)))?;
+                if text.len() > MAX_PLAN_BYTES {
+                    reply.push_str("\n\nPlan cut short, see `just tofu-plans` for the rest.");
+                }
+            }
+            Some(_) => write!(
+                reply,
+                "\n\n⚠️ The stored plan is `{}`, not the pending one, so it isn't shown.",
+                saved.unwrap_or("unknown")
+            )?,
+            None => reply.push_str("\n\n⚠️ The plan isn't stored yet, so it isn't shown."),
+        }
+
+        let patch = format!(r#"{{"spec":{{"approvePlan":"{pending}"}}}}"#);
+        let apply = format!(
+            "kubectl --context homelab -n {NAMESPACE} patch terraform {TERRAFORM} \
+             --type merge --field-manager tofu-approve -p '{patch}'"
+        );
+        write!(reply, "\n\nApply with:\n\n{}", code_block(&apply))?;
+        Ok(reply)
+    }
 }
 
 #[cfg(test)]
@@ -105,8 +117,8 @@ mod tests {
 
     use super::*;
 
-    fn terraform(pending: &str) -> DynamicObject {
-        serde_json::from_value(json!({
+    fn plan(pending: &str, stored: Option<ConfigMap>) -> Plan {
+        let terraform = serde_json::from_value(json!({
             "apiVersion": "infra.contrib.fluxcd.io/v1alpha2",
             "kind": "Terraform",
             "metadata": { "name": TERRAFORM },
@@ -115,21 +127,22 @@ mod tests {
                 "conditions": [{ "type": "Ready", "status": "Unknown", "reason": "Planned" }],
             },
         }))
-        .unwrap()
+        .unwrap();
+        Plan { terraform, stored }
     }
 
-    fn stored(saved: &str, plan: &str) -> ConfigMap {
-        serde_json::from_value(json!({
+    fn stored(saved: &str, text: &str) -> Option<ConfigMap> {
+        let config_map = serde_json::from_value(json!({
             "metadata": { "name": PLAN_CONFIGMAP, "annotations": { "savedPlan": saved } },
-            "data": { "tfplan": plan },
-        }))
-        .unwrap()
+            "data": { "tfplan": text },
+        }));
+        Some(config_map.unwrap())
     }
 
     #[test]
     fn shows_the_pending_plan_and_how_to_apply_it() {
-        let plan = stored("plan-main-new", "Plan: 1 to add");
-        let reply = render(&terraform("plan-main-new"), Some(&plan)).unwrap();
+        let stored = stored("plan-main-new", "Plan: 1 to add");
+        let reply = plan("plan-main-new", stored).render().unwrap();
         assert!(reply.contains("ready `Unknown` (`Planned`)"));
         assert!(reply.contains("Last applied: `plan-main-old`"));
         assert!(reply.contains("**Pending:** `plan-main-new`"));
@@ -141,38 +154,39 @@ mod tests {
 
     #[test]
     fn nothing_to_apply_without_a_pending_plan() {
-        let plan = stored("plan-main-old", "old plan");
-        let reply = render(&terraform(""), Some(&plan)).unwrap();
+        let reply = plan("", stored("plan-main-old", "old plan"))
+            .render()
+            .unwrap();
         assert!(reply.contains("No pending plan."));
         assert!(!reply.contains("old plan") && !reply.contains("kubectl"));
     }
 
     #[test]
     fn hides_a_stored_plan_of_another_revision() {
-        let plan = stored("plan-main-other", "other plan");
-        let reply = render(&terraform("plan-main-new"), Some(&plan)).unwrap();
+        let stored = stored("plan-main-other", "other plan");
+        let reply = plan("plan-main-new", stored).render().unwrap();
         assert!(reply.contains("⚠️ The stored plan is `plan-main-other`"));
         assert!(!reply.contains("other plan"));
 
-        let reply = render(&terraform("plan-main-new"), None).unwrap();
+        let reply = plan("plan-main-new", None).render().unwrap();
         assert!(reply.contains("⚠️ The plan isn't stored yet"));
     }
 
     #[test]
     fn pending_counts_as_stored_once_its_text_is() {
-        let pending = terraform("plan-main-new");
-        let new = stored("plan-main-new", "new plan");
-        let other = stored("plan-main-other", "other plan");
-        assert_eq!(stored_pending(&pending, Some(&new)), Some("plan-main-new"));
-        assert_eq!(stored_pending(&pending, Some(&other)), None);
-        assert_eq!(stored_pending(&pending, None), None);
-        assert_eq!(stored_pending(&terraform(""), Some(&new)), None);
+        let new = plan("plan-main-new", stored("plan-main-new", "new plan"));
+        assert_eq!(new.stored_pending(), Some("plan-main-new"));
+        let other = plan("plan-main-new", stored("plan-main-other", "other plan"));
+        assert_eq!(other.stored_pending(), None);
+        assert_eq!(plan("plan-main-new", None).stored_pending(), None);
+        let applied = plan("", stored("plan-main-new", "new plan"));
+        assert_eq!(applied.stored_pending(), None);
     }
 
     #[test]
     fn cuts_long_plans_on_a_character_boundary() {
-        let plan = stored("plan-main-new", &"é".repeat(MAX_PLAN_BYTES));
-        let reply = render(&terraform("plan-main-new"), Some(&plan)).unwrap();
+        let stored = stored("plan-main-new", &"é".repeat(MAX_PLAN_BYTES));
+        let reply = plan("plan-main-new", stored).render().unwrap();
         assert!(reply.contains("Plan cut short"));
         assert!(reply.len() < MAX_PLAN_BYTES + 1000);
     }
