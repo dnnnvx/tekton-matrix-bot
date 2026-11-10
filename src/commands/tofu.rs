@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use k8s_openapi::api::core::v1::ConfigMap;
 use kube::Api;
-use kube::api::{ApiResource, DynamicObject, GroupVersionKind};
+use kube::api::{DynamicObject, GroupVersionKind};
 
 use super::{Command, Ctx, Reply};
 use crate::cluster::{Cluster, condition};
@@ -28,13 +28,11 @@ async fn run(ctx: Ctx) -> Reply {
 
 /// The Terraform object, and the ConfigMap holding its readable plan if there is one.
 pub async fn fetch(cluster: &Cluster) -> anyhow::Result<(DynamicObject, Option<ConfigMap>)> {
-    let kube = &cluster.kube;
     let gvk = GroupVersionKind::gvk("infra.contrib.fluxcd.io", "v1alpha2", "Terraform");
-    let resource = ApiResource::from_gvk_with_plural(&gvk, "terraforms");
-    let terraforms = Api::<DynamicObject>::namespaced_with(kube.clone(), NAMESPACE, &resource);
+    let terraforms = cluster.custom(&gvk, "terraforms", NAMESPACE);
     let terraform = terraforms.get(TERRAFORM).await?;
 
-    let stored = Api::<ConfigMap>::namespaced(kube.clone(), NAMESPACE)
+    let stored = Api::<ConfigMap>::namespaced(cluster.kube.clone(), NAMESPACE)
         .get_opt(PLAN_CONFIGMAP)
         .await?;
     Ok((terraform, stored))

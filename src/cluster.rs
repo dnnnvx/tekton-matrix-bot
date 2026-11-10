@@ -36,8 +36,18 @@ impl Cluster {
 
     fn tekton(&self, kind: &str, plural: &str) -> Api<DynamicObject> {
         let gvk = GroupVersionKind::gvk("tekton.dev", "v1", kind);
-        let resource = ApiResource::from_gvk_with_plural(&gvk, plural);
-        Api::namespaced_with(self.kube.clone(), CI_NAMESPACE, &resource)
+        self.custom(&gvk, plural, CI_NAMESPACE)
+    }
+
+    /// A custom resource, which has no typed API in k8s-openapi.
+    pub fn custom(
+        &self,
+        gvk: &GroupVersionKind,
+        plural: &str,
+        namespace: &str,
+    ) -> Api<DynamicObject> {
+        let resource = ApiResource::from_gvk_with_plural(gvk, plural);
+        Api::namespaced_with(self.kube.clone(), namespace, &resource)
     }
 
     /// The last log lines of the step that failed the run.
