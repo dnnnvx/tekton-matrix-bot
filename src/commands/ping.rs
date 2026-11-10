@@ -4,6 +4,7 @@ pub const COMMAND: Command = Command {
     name: "ping",
     usage: "!ping",
     summary: "check the bot is alive",
+    ops_only: false,
     run: |ctx| Box::pin(run(ctx)),
 };
 

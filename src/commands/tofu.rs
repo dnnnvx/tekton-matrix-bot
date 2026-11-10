@@ -12,6 +12,7 @@ pub const COMMAND: Command = Command {
     name: "tofu",
     usage: "!tofu",
     summary: "pending tofu plan, and the command to apply it",
+    ops_only: true,
     run: |ctx| Box::pin(run(ctx)),
 };
 
@@ -22,7 +23,6 @@ const PLAN_CONFIGMAP: &str = "tfplan-default-production";
 const MAX_PLAN_BYTES: usize = 20_000;
 
 async fn run(ctx: Ctx) -> Reply {
-    ctx.cluster.ensure_ops_room(ctx.room.room_id())?;
     Plan::fetch(&ctx.cluster).await?.render()
 }
 

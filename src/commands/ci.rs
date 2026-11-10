@@ -7,13 +7,13 @@ pub const COMMAND: Command = Command {
     name: "ci",
     usage: "!ci [list]",
     summary: "running builds and recent failures",
+    ops_only: true,
     run: |ctx| Box::pin(run(ctx)),
 };
 
 const RECENT_FAILURES: usize = 5;
 
 async fn run(ctx: Ctx) -> Reply {
-    ctx.cluster.ensure_ops_room(ctx.room.room_id())?;
     anyhow::ensure!(
         matches!(ctx.args.as_str(), "" | "list"),
         "usage: `!ci [list]`"

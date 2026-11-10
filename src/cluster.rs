@@ -72,7 +72,6 @@ impl Cluster {
         Ok(pods.logs(pod, &params).await?)
     }
 
-    /// Cluster state can be sensitive, so it's only shown to the ops room's members.
     pub fn ensure_ops_room(&self, room: &RoomId) -> anyhow::Result<()> {
         anyhow::ensure!(room == self.ops_room, "only available in the ops room");
         Ok(())

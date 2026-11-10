@@ -25,6 +25,8 @@ pub struct Command {
     /// Shown in `!help`, e.g. `!deploy <app> [--dry-run]`.
     pub usage: &'static str,
     pub summary: &'static str,
+    /// Cluster state can be sensitive, so these only run in the ops room.
+    pub ops_only: bool,
     pub run: fn(Ctx) -> BoxFuture<Reply>,
 }
 
@@ -62,13 +64,20 @@ pub async fn dispatch(
         args: args.to_owned(),
         cluster,
     };
-    match (command.run)(ctx).await {
+    match run(command, ctx).await {
         Ok(reply) => Some(reply),
         Err(e) => {
             warn!(command = command.name, "failed: {e:#}");
             Some(format!("`!{}` failed: {e}", command.name))
         }
     }
+}
+
+async fn run(command: &Command, ctx: Ctx) -> Reply {
+    if command.ops_only {
+        ctx.cluster.ensure_ops_room(ctx.room.room_id())?;
+    }
+    (command.run)(ctx).await
 }
 
 /// Splits `!name args…` into `("name", "args…")`. Anything else isn't a command.
