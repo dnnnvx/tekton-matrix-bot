@@ -15,7 +15,7 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::ruma::{OwnedEventId, RoomId};
 use tracing::{error, warn};
 
-use crate::cluster::{Cluster, condition, run_failure, run_is_active, run_link};
+use crate::cluster::{Cluster, condition, run_failure, run_is_active, run_link, run_name};
 use crate::commands::tofu;
 
 /// Enough for the error, short enough to read in a chat. An event caps at 65 KB.
@@ -54,7 +54,7 @@ pub async fn watch_ci(client: Client, cluster: Cluster, gc: Duration) {
                 let failure = match run_failure(run) {
                     Some(_) => {
                         let logs = cluster.failure_logs(run).await.inspect_err(|e| {
-                            warn!(run = ?run.metadata.name, "no failure logs: {e:#}");
+                            warn!(run = run_name(run), "no failure logs: {e:#}");
                         });
                         Some(message(url, run, logs.ok().as_deref()))
                     }

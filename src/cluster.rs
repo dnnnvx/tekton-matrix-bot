@@ -42,8 +42,7 @@ impl Cluster {
 
     /// The last log lines of the step that failed the run.
     pub async fn failure_logs(&self, run: &DynamicObject) -> anyhow::Result<String> {
-        let name = run.metadata.name.as_deref().unwrap_or_default();
-        let selector = format!("tekton.dev/pipelineRun={name}");
+        let selector = format!("tekton.dev/pipelineRun={}", run_name(run));
         let task_runs = self
             .tekton("TaskRun", "taskruns")
             .list(&ListParams::default().labels(&selector))
@@ -109,9 +108,13 @@ fn failed_step(task_run: &DynamicObject) -> Option<(&str, &str)> {
     Some((status["podName"].as_str()?, failed["container"].as_str()?))
 }
 
+pub fn run_name(run: &DynamicObject) -> &str {
+    run.metadata.name.as_deref().unwrap_or_default()
+}
+
 /// Markdown link to the run in the Tekton dashboard.
 pub fn run_link(dashboard_url: &str, run: &DynamicObject) -> String {
-    let name = run.metadata.name.as_deref().unwrap_or_default();
+    let name = run_name(run);
     let url = dashboard_url.trim_end_matches('/');
     format!("[{name}]({url}/#/namespaces/{CI_NAMESPACE}/pipelineruns/{name})")
 }
