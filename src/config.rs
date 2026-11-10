@@ -27,7 +27,7 @@ pub struct Config {
     /// How often the pending tofu plan is checked.
     pub tofu_poll: Duration,
     /// A CI run tracked this long is forgotten, in case its end was never seen.
-    pub tekton_gc: Duration,
+    pub tekton_forget_after: Duration,
 }
 
 impl Config {
@@ -51,7 +51,7 @@ impl Config {
                 .parse()
                 .context("OPS_ROOM must be a room ID")?,
             tofu_poll: Duration::from_secs(60 * positive("TOFU_POLL_MINUTES", 30)?),
-            tekton_gc: Duration::from_secs(3600 * positive("TEKTON_GC_HOURS", 24)?),
+            tekton_forget_after: Duration::from_secs(3600 * positive("TEKTON_GC_HOURS", 24)?),
         })
     }
 }

@@ -10,7 +10,7 @@ mod session;
 use anyhow::Context;
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::{Client, LoopCtrl};
-use tokio::signal::unix::{SignalKind, signal};
+use tokio::signal::unix::{self, SignalKind};
 use tracing::{info, warn};
 
 use crate::cluster::Cluster;
@@ -47,13 +47,13 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(alerts::watch_ci(
         client.clone(),
         cluster.clone(),
-        config.tekton_gc,
+        config.tekton_forget_after,
     ));
     tokio::spawn(alerts::poll_tofu(client.clone(), cluster, config.tofu_poll));
     let user = client.user_id().context("no user ID after login")?;
     info!(%user, "ready");
 
-    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigterm = unix::signal(SignalKind::terminate())?;
     tokio::select! {
         res = sync(&client, &health, response.next_batch) => res?,
         _ = sigterm.recv() => info!("SIGTERM, shutting down"),

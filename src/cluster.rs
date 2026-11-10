@@ -57,19 +57,19 @@ impl Cluster {
             .tekton("TaskRun", "taskruns")
             .list(&ListParams::default().labels(&selector))
             .await?;
-        let (pod, container) = task_runs
+        let step = task_runs
             .items
             .iter()
             .filter(|task_run| matches!(run_state(task_run), RunState::Failed(_)))
             .find_map(failed_step)
             .context("no failed step found")?;
         let params = LogParams {
-            container: Some(container.to_owned()),
+            container: Some(step.container.to_owned()),
             tail_lines: Some(LOG_LINES),
             ..LogParams::default()
         };
         let pods = Api::<Pod>::namespaced(self.kube.clone(), CI_NAMESPACE);
-        Ok(pods.logs(pod, &params).await?)
+        Ok(pods.logs(step.pod, &params).await?)
     }
 
     pub fn ensure_ops_room(&self, room: &RoomId) -> anyhow::Result<()> {
@@ -87,7 +87,7 @@ pub struct Condition<'a> {
 /// The `status.conditions` entry of the given type.
 pub fn condition<'a>(object: &'a DynamicObject, kind: &str) -> Option<Condition<'a>> {
     let conditions = object.data.pointer("/status/conditions")?.as_array()?;
-    let found = conditions.iter().find(|c| c["type"] == kind)?;
+    let found = conditions.iter().find(|entry| entry["type"] == kind)?;
     Some(Condition {
         status: found["status"].as_str().unwrap_or_default(),
         reason: found["reason"].as_str().unwrap_or_default(),
@@ -117,8 +117,14 @@ pub fn run_state(run: &DynamicObject) -> RunState<'_> {
     }
 }
 
-/// The pod and container of a TaskRun's first step that exited non-zero.
-fn failed_step(task_run: &DynamicObject) -> Option<(&str, &str)> {
+#[derive(Debug, PartialEq)]
+struct FailedStep<'a> {
+    pod: &'a str,
+    container: &'a str,
+}
+
+/// A TaskRun's first step that exited non-zero.
+fn failed_step(task_run: &DynamicObject) -> Option<FailedStep<'_>> {
     let status = &task_run.data["status"];
     let steps = status["steps"].as_array()?;
     let failed = steps.iter().find(|step| {
@@ -126,7 +132,10 @@ fn failed_step(task_run: &DynamicObject) -> Option<(&str, &str)> {
             .as_i64()
             .is_some_and(|code| code != 0)
     })?;
-    Some((status["podName"].as_str()?, failed["container"].as_str()?))
+    Some(FailedStep {
+        pod: status["podName"].as_str()?,
+        container: failed["container"].as_str()?,
+    })
 }
 
 pub fn run_name(run: &DynamicObject) -> &str {
@@ -210,7 +219,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             failed_step(&task_run),
-            Some(("build-1-test-pod", "step-test"))
+            Some(FailedStep {
+                pod: "build-1-test-pod",
+                container: "step-test"
+            })
         );
 
         let mut running = task_run;

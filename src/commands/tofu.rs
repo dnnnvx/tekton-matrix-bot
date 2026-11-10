@@ -84,7 +84,7 @@ impl Plan {
         let text = self
             .stored
             .as_ref()
-            .and_then(|c| c.data.as_ref()?.get("tfplan"));
+            .and_then(|config_map| config_map.data.as_ref()?.get("tfplan"));
         match text {
             // A stored plan from another revision isn't what the command below would apply.
             Some(text) if saved == Some(pending) => {

@@ -80,7 +80,8 @@ fn parse(body: &str) -> Option<(&str, &str)> {
 }
 
 fn find(name: &str) -> Option<&'static Command> {
-    ALL.iter().find(|c| c.name.eq_ignore_ascii_case(name))
+    ALL.iter()
+        .find(|command| command.name.eq_ignore_ascii_case(name))
 }
 
 #[cfg(test)]
@@ -106,22 +107,22 @@ mod tests {
 
     #[test]
     fn finds_case_insensitively() {
-        assert_eq!(find("PING").map(|c| c.name), Some("ping"));
+        assert_eq!(find("PING").map(|command| command.name), Some("ping"));
         assert!(find("nope").is_none());
     }
 
     #[test]
     fn registry_is_consistent() {
-        for (i, c) in ALL.iter().enumerate() {
+        for (i, command) in ALL.iter().enumerate() {
             assert!(
-                parse(c.usage).is_some_and(|(name, _)| name == c.name),
-                "{}",
-                c.name
+                parse(command.usage).is_some_and(|(name, _)| name == command.name),
+                "usage of {} must start with its name",
+                command.name
             );
             assert!(
-                ALL[..i].iter().all(|o| o.name != c.name),
+                ALL[..i].iter().all(|other| other.name != command.name),
                 "duplicate {}",
-                c.name
+                command.name
             );
         }
     }

@@ -12,9 +12,9 @@ pub const COMMAND: Command = Command {
 
 async fn run(_: Ctx) -> Reply {
     let mut reply = String::from("**Commands**");
-    for c in ALL {
-        write!(reply, "\n- `{}`: {}", c.usage, c.summary)?;
-        if c.ops_only {
+    for command in ALL {
+        write!(reply, "\n- `{}`: {}", command.usage, command.summary)?;
+        if command.ops_only {
             reply.push_str(" (ops room only)");
         }
     }

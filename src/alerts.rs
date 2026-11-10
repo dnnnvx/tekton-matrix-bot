@@ -25,8 +25,9 @@ const MAX_LOG_BYTES: usize = 4_000;
 /// Watches forever. The watcher re-lists and retries by itself after an error.
 /// A run's start is posted, then edited into its result when it ends; a failure
 /// also gets a reply with the logs.
-pub async fn watch_ci(client: Client, cluster: Cluster, gc: Duration) {
-    let events = watcher(cluster.pipeline_runs(), watcher::Config::default()).default_backoff();
+pub async fn watch_ci(client: Client, cluster: Cluster, forget_after: Duration) {
+    let events =
+        watcher::watcher(cluster.pipeline_runs(), watcher::Config::default()).default_backoff();
     let mut events = pin!(events);
     let mut running = Running::default();
     while let Some(event) = events.next().await {
@@ -37,7 +38,7 @@ pub async fn watch_ci(client: Client, cluster: Cluster, gc: Duration) {
                 continue;
             }
         };
-        running.forget_older_than(gc);
+        running.forget_older_than(forget_after);
         match running.change(&event) {
             None => {}
             Some(Change::Started(run)) => {
@@ -183,8 +184,8 @@ impl Running {
     }
 
     /// No run lasts this long: its end was missed, e.g. it was deleted while the watch was down.
-    fn forget_older_than(&mut self, gc: Duration) {
-        self.0.retain(|_, tracked| tracked.since.elapsed() < gc);
+    fn forget_older_than(&mut self, age: Duration) {
+        self.0.retain(|_, tracked| tracked.since.elapsed() < age);
     }
 }
 
