@@ -19,6 +19,8 @@ use tracing::{error, info};
 
 const READY_STALE: Duration = Duration::from_secs(2 * 60);
 const LIVE_STALE: Duration = Duration::from_secs(5 * 60);
+/// Only a panic while holding the lock poisons it, and nothing in there can panic.
+const POISONED: &str = "health lock poisoned";
 
 /// When the last sync succeeded; `None` until the first one.
 #[derive(Clone, Default)]
@@ -26,11 +28,11 @@ pub struct Health(Arc<Mutex<Option<Instant>>>);
 
 impl Health {
     pub fn synced(&self) {
-        *self.0.lock().unwrap() = Some(Instant::now());
+        *self.0.lock().expect(POISONED) = Some(Instant::now());
     }
 
     fn since_sync(&self) -> Option<Duration> {
-        self.0.lock().unwrap().map(|at| at.elapsed())
+        self.0.lock().expect(POISONED).map(|at| at.elapsed())
     }
 }
 
