@@ -11,8 +11,7 @@ pub mod tofu;
 use std::future::Future;
 use std::pin::Pin;
 
-use matrix_sdk::ruma::OwnedUserId;
-use matrix_sdk::{Client, Room};
+use matrix_sdk::Room;
 use tracing::warn;
 
 use crate::cluster::Cluster;
@@ -35,32 +34,21 @@ pub type Reply = anyhow::Result<String>;
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 
 /// What a command gets to work with.
-#[allow(dead_code, reason = "for commands that need more than their args")]
 pub struct Ctx {
-    pub client: Client,
     pub room: Room,
-    pub sender: OwnedUserId,
     /// Text after the command name, trimmed. Commands parse it however they need.
     pub args: String,
     pub cluster: Cluster,
 }
 
 /// Runs the command in `body`. `None` when `body` isn't a command, so the bot stays quiet.
-pub async fn dispatch(
-    body: &str,
-    client: Client,
-    room: Room,
-    sender: OwnedUserId,
-    cluster: Cluster,
-) -> Option<String> {
+pub async fn dispatch(body: &str, room: Room, cluster: Cluster) -> Option<String> {
     let (name, args) = parse(body)?;
     let Some(command) = find(name) else {
         return Some(format!("unknown command `{name}`, try `!help`"));
     };
     let ctx = Ctx {
-        client,
         room,
-        sender,
         args: args.to_owned(),
         cluster,
     };

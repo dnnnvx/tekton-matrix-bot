@@ -37,8 +37,7 @@ pub async fn on_message(
 
     // Commands run in their own task so a slow one doesn't stall the sync loop.
     tokio::spawn(async move {
-        let sender = event.sender.clone();
-        let reply = commands::dispatch(&body, client, room.clone(), sender, cluster).await;
+        let reply = commands::dispatch(&body, room.clone(), cluster).await;
         let Some(reply) = reply else {
             return;
         };
