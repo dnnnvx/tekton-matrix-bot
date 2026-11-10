@@ -50,34 +50,43 @@ pub async fn watch_ci(client: Client, cluster: Cluster, gc: Duration) {
                 .await;
                 running.track(run, sent);
             }
-            Some(Change::Ended(run, started)) => {
-                let (url, room) = (&cluster.dashboard_url, &cluster.ops_room);
-                let failure = match run_state(run) {
-                    RunState::Failed(_) => {
-                        let logs = cluster.failure_logs(run).await.inspect_err(|e| {
-                            warn!(run = run_name(run), "no failure logs: {e:#}");
-                        });
-                        Some(message(url, run, logs.ok().as_deref()))
-                    }
-                    _ => None,
-                };
-                let Some(started) = started else {
-                    // The start wasn't posted when sending failed: the result gets a message of its own.
-                    let text = failure.unwrap_or_else(|| message(url, run, None));
-                    post(&client, room, RoomMessageEventContent::text_markdown(text)).await;
-                    continue;
-                };
-                let edit = RoomMessageEventContent::text_markdown(message(url, run, None))
-                    .make_replacement(ReplacementMetadata::new(started.clone(), None));
-                post(&client, room, edit).await;
-                // Clients usually don't notify on edits, but do on a new message.
-                if let Some(failure) = failure {
-                    let mut reply = RoomMessageEventContent::text_markdown(failure);
-                    reply.relates_to = Some(Relation::Reply(Reply::with_event_id(started)));
-                    post(&client, room, reply).await;
-                }
-            }
+            Some(Change::Ended(run, started)) => post_end(&client, &cluster, run, started).await,
         }
+    }
+}
+
+/// Edits the start message into the run's result, and replies to it with the
+/// logs of a failure.
+async fn post_end(
+    client: &Client,
+    cluster: &Cluster,
+    run: &DynamicObject,
+    started: Option<OwnedEventId>,
+) {
+    let (url, room) = (&cluster.dashboard_url, &cluster.ops_room);
+    let failure = match run_state(run) {
+        RunState::Failed(_) => {
+            let logs = cluster.failure_logs(run).await.inspect_err(|e| {
+                warn!(run = run_name(run), "no failure logs: {e:#}");
+            });
+            Some(message(url, run, logs.ok().as_deref()))
+        }
+        _ => None,
+    };
+    let Some(started) = started else {
+        // The start wasn't posted when sending failed: the result gets a message of its own.
+        let text = failure.unwrap_or_else(|| message(url, run, None));
+        post(client, room, RoomMessageEventContent::text_markdown(text)).await;
+        return;
+    };
+    let edit = RoomMessageEventContent::text_markdown(message(url, run, None))
+        .make_replacement(ReplacementMetadata::new(started.clone(), None));
+    post(client, room, edit).await;
+    // Clients usually don't notify on edits, but do on a new message.
+    if let Some(failure) = failure {
+        let mut reply = RoomMessageEventContent::text_markdown(failure);
+        reply.relates_to = Some(Relation::Reply(Reply::with_event_id(started)));
+        post(client, room, reply).await;
     }
 }
 
