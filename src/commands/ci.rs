@@ -1,7 +1,7 @@
 use kube::api::{DynamicObject, ListParams};
 
 use super::{Command, Ctx, Reply};
-use crate::cluster::{run_failure, run_is_active, run_link};
+use crate::cluster::{RunState, run_link, run_state};
 
 pub const COMMAND: Command = Command {
     name: "ci",
@@ -30,14 +30,20 @@ fn render(dashboard_url: &str, mut runs: Vec<DynamicObject>) -> String {
     // RFC 3339 UTC timestamps sort chronologically as text.
     runs.sort_by_key(|run| std::cmp::Reverse(time(run, "startTime").to_owned()));
 
-    let running = runs.iter().filter(|run| run_is_active(run)).map(|run| {
+    let running = runs
+        .iter()
+        .filter(|run| matches!(run_state(run), RunState::Running));
+    let running = running.map(|run| {
         let link = run_link(dashboard_url, run);
         format!("- {link}, started {}", time(run, "startTime"))
     });
     let failures = runs
         .iter()
         .filter_map(|run| {
-            let reason = run_failure(run)?.reason;
+            let RunState::Failed(failed) = run_state(run) else {
+                return None;
+            };
+            let reason = failed.reason;
             let link = run_link(dashboard_url, run);
             Some(format!(
                 "- {link} (`{reason}`), {}",

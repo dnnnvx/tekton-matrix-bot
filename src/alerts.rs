@@ -15,7 +15,7 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::ruma::{OwnedEventId, RoomId};
 use tracing::{error, warn};
 
-use crate::cluster::{Cluster, condition, run_failure, run_is_active, run_link, run_name};
+use crate::cluster::{Cluster, RunState, run_link, run_name, run_state};
 use crate::commands::tofu;
 
 /// Enough for the error, short enough to read in a chat. An event caps at 65 KB.
@@ -51,14 +51,14 @@ pub async fn watch_ci(client: Client, cluster: Cluster, gc: Duration) {
             }
             Some(Change::Ended(run, started)) => {
                 let (url, room) = (&cluster.dashboard_url, &cluster.ops_room);
-                let failure = match run_failure(run) {
-                    Some(_) => {
+                let failure = match run_state(run) {
+                    RunState::Failed(_) => {
                         let logs = cluster.failure_logs(run).await.inspect_err(|e| {
                             warn!(run = run_name(run), "no failure logs: {e:#}");
                         });
                         Some(message(url, run, logs.ok().as_deref()))
                     }
-                    None => None,
+                    _ => None,
                 };
                 let Some(started) = started else {
                     // The start wasn't posted when sending failed: the result gets a message of its own.
@@ -156,7 +156,7 @@ impl Running {
             watcher::Event::InitApply(run) | watcher::Event::Apply(run) => run,
         };
         let uid = run.metadata.uid.as_deref()?;
-        if run_is_active(run) {
+        if matches!(run_state(run), RunState::Running) {
             (!self.0.contains_key(uid)).then_some(Change::Started(run))
         } else {
             // An untracked finished run was posted already, or ended before the bot saw it start.
@@ -180,19 +180,15 @@ impl Running {
 
 fn message(dashboard_url: &str, run: &DynamicObject, logs: Option<&str>) -> String {
     let link = run_link(dashboard_url, run);
-    let ended = condition(run, "Succeeded").filter(|_| !run_is_active(run));
-    let Some(end) = ended else {
-        return format!("🟡 **CI running:** {link}");
+    let failed = match run_state(run) {
+        RunState::Running => return format!("🟡 **CI running:** {link}"),
+        RunState::Succeeded => return format!("✅ **CI succeeded:** {link}"),
+        RunState::Cancelled(reason) => return format!("⏹️ **CI cancelled:** {link} (`{reason}`)"),
+        RunState::Failed(failed) => failed,
     };
-    if end.status == "True" {
-        return format!("✅ **CI succeeded:** {link}");
-    }
-    if run_failure(run).is_none() {
-        return format!("⏹️ **CI cancelled:** {link} (`{}`)", end.reason);
-    }
     let mut text = format!(
         "🔴 **CI failed:** {link} (`{}`) {}",
-        end.reason, end.message
+        failed.reason, failed.message
     );
     if let Some(logs) = logs {
         // The end of the logs is where the error is.

@@ -60,7 +60,7 @@ impl Cluster {
         let (pod, container) = task_runs
             .items
             .iter()
-            .filter(|task_run| run_failure(task_run).is_some())
+            .filter(|task_run| matches!(run_state(task_run), RunState::Failed(_)))
             .find_map(failed_step)
             .context("no failed step found")?;
         let params = LogParams {
@@ -96,14 +96,26 @@ pub fn condition<'a>(object: &'a DynamicObject, kind: &str) -> Option<Condition<
     })
 }
 
-/// A cancelled run was stopped on purpose, so it doesn't count as a failure.
-pub fn run_failure<'a>(run: &'a DynamicObject) -> Option<Condition<'a>> {
-    condition(run, "Succeeded").filter(|c| c.status == "False" && c.reason != "Cancelled")
+/// Where a PipelineRun or TaskRun is, from its `Succeeded` condition.
+pub enum RunState<'a> {
+    /// Also a run with no condition yet: it hasn't been picked up, but it isn't finished either.
+    Running,
+    Succeeded,
+    /// Stopped on purpose, so it doesn't count as a failure. With the reason.
+    Cancelled(&'a str),
+    Failed(Condition<'a>),
 }
 
-/// A run with no condition yet hasn't been picked up, but it isn't finished either.
-pub fn run_is_active(run: &DynamicObject) -> bool {
-    condition(run, "Succeeded").is_none_or(|c| c.status == "Unknown")
+pub fn run_state(run: &DynamicObject) -> RunState<'_> {
+    let Some(succeeded) = condition(run, "Succeeded") else {
+        return RunState::Running;
+    };
+    match (succeeded.status, succeeded.reason) {
+        ("Unknown", _) => RunState::Running,
+        ("True", _) => RunState::Succeeded,
+        ("False", reason) if reason != "Cancelled" => RunState::Failed(succeeded),
+        (_, reason) => RunState::Cancelled(reason),
+    }
 }
 
 /// The pod and container of a TaskRun's first step that exited non-zero.
@@ -153,26 +165,32 @@ pub fn test_run(name: &str, status: &str, reason: &str) -> DynamicObject {
 mod tests {
     use super::*;
 
+    fn state_name(run: &DynamicObject) -> &'static str {
+        match run_state(run) {
+            RunState::Running => "running",
+            RunState::Succeeded => "succeeded",
+            RunState::Cancelled(_) => "cancelled",
+            RunState::Failed(_) => "failed",
+        }
+    }
+
     #[test]
     fn classifies_runs() {
-        let failed = test_run("a", "False", "Failed");
-        assert!(run_failure(&failed).is_some() && !run_is_active(&failed));
-
-        let timed_out = test_run("a", "False", "PipelineRunTimeout");
-        assert!(run_failure(&timed_out).is_some());
-
-        let cancelled = test_run("a", "False", "Cancelled");
-        assert!(run_failure(&cancelled).is_none() && !run_is_active(&cancelled));
-
-        let running = test_run("a", "Unknown", "Running");
-        assert!(run_failure(&running).is_none() && run_is_active(&running));
-
-        let succeeded = test_run("a", "True", "Succeeded");
-        assert!(run_failure(&succeeded).is_none() && !run_is_active(&succeeded));
+        let cases = [
+            ("False", "Failed", "failed"),
+            ("False", "PipelineRunTimeout", "failed"),
+            ("False", "Cancelled", "cancelled"),
+            ("Unknown", "Running", "running"),
+            ("True", "Succeeded", "succeeded"),
+        ];
+        for (status, reason, expected) in cases {
+            let run = test_run("a", status, reason);
+            assert_eq!(state_name(&run), expected, "{status} {reason}");
+        }
 
         let mut new = test_run("a", "Unknown", "Running");
         new.data = serde_json::json!({});
-        assert!(run_failure(&new).is_none() && run_is_active(&new));
+        assert_eq!(state_name(&new), "running", "no condition yet");
     }
 
     #[test]
