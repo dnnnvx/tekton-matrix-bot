@@ -4,6 +4,7 @@ mod commands;
 mod config;
 mod handlers;
 mod health;
+mod markdown;
 mod session;
 
 use anyhow::Context;

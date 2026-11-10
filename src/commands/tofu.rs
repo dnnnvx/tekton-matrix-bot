@@ -6,6 +6,7 @@ use kube::api::{DynamicObject, GroupVersionKind};
 
 use super::{Command, Ctx, Reply};
 use crate::cluster::{Cluster, condition};
+use crate::markdown::{code_block, head};
 
 pub const COMMAND: Command = Command {
     name: "tofu",
@@ -76,7 +77,7 @@ pub fn render(terraform: &DynamicObject, stored: Option<&ConfigMap>) -> Reply {
     match text {
         // A stored plan from another revision isn't what the command below would apply.
         Some(text) if saved == Some(pending) => {
-            write!(reply, "\n\n{}", code_block(cut(text)))?;
+            write!(reply, "\n\n{}", code_block(head(text, MAX_PLAN_BYTES)))?;
             if text.len() > MAX_PLAN_BYTES {
                 reply.push_str("\n\nPlan cut short, see `just tofu-plans` for the rest.");
             }
@@ -96,21 +97,6 @@ pub fn render(terraform: &DynamicObject, stored: Option<&ConfigMap>) -> Reply {
     );
     write!(reply, "\n\nApply with:\n\n{}", code_block(&apply))?;
     Ok(reply)
-}
-
-fn cut(text: &str) -> &str {
-    &text[..text.floor_char_boundary(MAX_PLAN_BYTES)]
-}
-
-/// A fence longer than any backtick run in the text, which can't close it early then.
-pub fn code_block(text: &str) -> String {
-    let longest = text
-        .split(|c| c != '`')
-        .map(str::len)
-        .max()
-        .unwrap_or_default();
-    let fence = "`".repeat(longest.max(2) + 1);
-    format!("{fence}\n{text}\n{fence}")
 }
 
 #[cfg(test)]
@@ -189,11 +175,5 @@ mod tests {
         let reply = render(&terraform("plan-main-new"), Some(&plan)).unwrap();
         assert!(reply.contains("Plan cut short"));
         assert!(reply.len() < MAX_PLAN_BYTES + 1000);
-    }
-
-    #[test]
-    fn fence_outgrows_backticks_in_the_text() {
-        assert_eq!(code_block("a"), "```\na\n```");
-        assert_eq!(code_block("a ```` b"), "`````\na ```` b\n`````");
     }
 }

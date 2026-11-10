@@ -17,6 +17,7 @@ use tracing::{error, warn};
 
 use crate::cluster::{Cluster, RunState, run_link, run_name, run_state};
 use crate::commands::tofu;
+use crate::markdown::{code_block, tail};
 
 /// Enough for the error, short enough to read in a chat. An event caps at 65 KB.
 const MAX_LOG_BYTES: usize = 4_000;
@@ -192,9 +193,8 @@ fn message(dashboard_url: &str, run: &DynamicObject, logs: Option<&str>) -> Stri
     );
     if let Some(logs) = logs {
         // The end of the logs is where the error is.
-        let start = logs.ceil_char_boundary(logs.len().saturating_sub(MAX_LOG_BYTES));
         text.push_str("\n\n");
-        text.push_str(&tofu::code_block(logs[start..].trim_end()));
+        text.push_str(&code_block(tail(logs, MAX_LOG_BYTES).trim_end()));
     }
     text
 }
